@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ArrowUpRight, BadgeCheck, BarChart3, Bell, BookOpen, Check, ChevronDown, CircleHelp, Copy, Fingerprint, GitBranch, Globe2, KeyRound, LayoutDashboard, Loader2, Menu, Network, Plus, Search, Settings2, ShieldCheck, Sparkles, UserPlus, UserRound, Users, Wallet, X, Zap } from 'lucide-react'
+import { Activity, ArrowUpRight, BadgeCheck, BarChart3, Bell, BookOpen, Check, ChevronDown, CircleHelp, Copy, FileText, Fingerprint, GitBranch, Globe2, KeyRound, LayoutDashboard, Loader2, Menu, Network, Plus, Search, Settings2, ShieldCheck, Sparkles, Upload, UserPlus, UserRound, Users, Wallet, X, Zap } from 'lucide-react'
 import {
   initialAssets,
   initialAuditEntries,
@@ -1320,6 +1320,8 @@ function MintPage({ address = '', onMintCreated }: { address?: string; onMintCre
   const [tokenId, setTokenId] = useState('')
   const [mintError, setMintError] = useState<string | null>(null)
   const [minting, setMinting] = useState(false)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [dragActive, setDragActive] = useState(false)
 
   // ── Connect MetaMask for on-chain signing (separate from Google auth) ────
   const connectMetaMask = async () => {
@@ -1351,10 +1353,15 @@ function MintPage({ address = '', onMintCreated }: { address?: string; onMintCre
         const jwtToken = typeof window !== 'undefined' ? localStorage.getItem('dvault_jwt') ?? '' : ''
         let ipfsUri = 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi'
         try {
+          const formData = new FormData()
+          formData.append('name', assetName)
+          formData.append('description', description)
+          formData.append('assetType', assetType)
+          if (uploadFile) formData.append('file', uploadFile)
           const metaRes = await fetch(`${API_URL}/api/assets/metadata`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {}) },
-            body: JSON.stringify({ name: assetName, description, assetType }),
+            headers: { ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {}) },
+            body: formData,
           })
           if (metaRes.ok) {
             const metaJson = await metaRes.json()
@@ -1480,6 +1487,59 @@ function MintPage({ address = '', onMintCreated }: { address?: string; onMintCre
               <div className="input-wrap"><select value={assetType} onChange={e => setAssetType(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'inherit', flex: 1, fontSize: 13 }}><option value="document">Document</option><option value="certificate">Certificate</option><option value="identity">Identity credential</option><option value="access">Access pass</option><option value="equipment">Equipment</option></select></div>
               <label className="field-label">Description</label>
               <div className="input-wrap textarea"><textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="What does this asset represent?" /></div>
+
+              {/* ── Document upload ── */}
+              <label className="field-label" style={{ marginTop: 16 }}>Upload document (optional)</label>
+              <div
+                className="file-drop-zone"
+                style={{
+                  border: `2px dashed ${dragActive ? 'var(--mint)' : 'var(--border)'}`,
+                  borderRadius: 12,
+                  padding: '28px 20px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  background: dragActive ? 'rgba(157,245,193,0.06)' : 'rgba(255,255,255,0.02)',
+                  marginBottom: 8,
+                }}
+                onDragOver={e => { e.preventDefault(); setDragActive(true) }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={e => {
+                  e.preventDefault()
+                  setDragActive(false)
+                  const f = e.dataTransfer.files?.[0]
+                  if (f) setUploadFile(f)
+                }}
+                onClick={() => {
+                  const inp = document.createElement('input')
+                  inp.type = 'file'
+                  inp.accept = 'image/jpeg,image/png,image/gif,image/webp,application/pdf'
+                  inp.onchange = () => { if (inp.files?.[0]) setUploadFile(inp.files[0]) }
+                  inp.click()
+                }}
+              >
+                {uploadFile ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                    <FileText size={20} style={{ color: 'var(--mint)' }} />
+                    <div style={{ textAlign: 'left' }}>
+                      <strong style={{ fontSize: 13 }}>{uploadFile.name}</strong>
+                      <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0 }}>{(uploadFile.size / 1024).toFixed(1)} KB · {uploadFile.type || 'unknown'}</p>
+                    </div>
+                    <button
+                      style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 4 }}
+                      onClick={e => { e.stopPropagation(); setUploadFile(null) }}
+                      title="Remove file"
+                    ><X size={16} /></button>
+                  </div>
+                ) : (
+                  <div>
+                    <Upload size={28} style={{ color: 'var(--muted)', marginBottom: 8 }} />
+                    <p style={{ fontSize: 13, color: 'var(--fg)', margin: '0 0 4px' }}><strong>Click to upload</strong> or drag and drop</p>
+                    <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0 }}>PDF, JPEG, PNG, GIF, WebP — max 10 MB</p>
+                  </div>
+                )}
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 4px' }}>File will be uploaded to IPFS (Pinata) and linked to the NFT metadata.</p>
             </>}
 
             {step === 3 && <>
@@ -1490,6 +1550,7 @@ function MintPage({ address = '', onMintCreated }: { address?: string; onMintCre
                 <div><span>Asset type</span><strong>{assetType}</strong></div>
                 <div><span>Standard</span><strong>ERC-721</strong></div>
                 <div><span>Network</span><strong>Ethereum Sepolia</strong></div>
+                {uploadFile && <div><span>Document</span><strong style={{ display: 'flex', alignItems: 'center', gap: 6 }}><FileText size={13} /> {uploadFile.name} <span style={{ fontSize: 11, color: 'var(--muted)' }}>({(uploadFile.size / 1024).toFixed(1)} KB)</span></strong></div>}
                 <div><span>Metadata</span><ProofPill>Will be pinned to IPFS</ProofPill></div>
               </div>
               <div className="signature-note"><KeyRound size={18} /><div><strong>Next: sign a transaction</strong><span>MetaMask will ask for confirmation. This permanently creates the asset on-chain.</span></div></div>
@@ -1508,7 +1569,7 @@ function MintPage({ address = '', onMintCreated }: { address?: string; onMintCre
               {step > 1 && step < 4 && <button className="button button-outline" onClick={() => setStep((step - 1) as 1|2|3|4)}>Back</button>}
               {step < 3 && <button className="button button-primary" onClick={() => setStep((step + 1) as 1|2|3|4)} disabled={step === 1 && !recipient.trim()}>Continue <ArrowUpRight size={15} /></button>}
               {step === 3 && <button className="button button-primary" onClick={handleSign} disabled={minting}>{minting ? <><Loader2 size={15} className="spin" /> Minting…</> : <>Sign &amp; mint <ArrowUpRight size={15} /></>}</button>}
-              {step === 4 && <button className="button button-primary" onClick={() => { setStep(1); setAssetName(''); setDescription(''); setTxHash(''); setTokenId(''); setMintError(null) }}>Mint another <Plus size={15} /></button>}
+              {step === 4 && <button className="button button-primary" onClick={() => { setStep(1); setAssetName(''); setDescription(''); setTxHash(''); setTokenId(''); setMintError(null); setUploadFile(null) }}>Mint another <Plus size={15} /></button>}
             </div>
           </div>
         </div>
